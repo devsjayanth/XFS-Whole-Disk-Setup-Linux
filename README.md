@@ -6,9 +6,10 @@
 ```bash
 # Find your disk. Cross-reference SIZE and SERIAL to be certain.
 lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINT,SERIAL
-
-# REPLACE <DEVICE> (e.g., /dev/sdb). Must return exactly "1".
-# If it returns anything else, STOP — you selected the wrong device.
+```
+REPLACE <DEVICE> (e.g., /dev/sdb). Must return exactly "1".
+If it returns anything else, STOP — you selected the wrong device.
+```
 lsblk -no TYPE <DEVICE> | grep -c '^disk$'
 ```
 
