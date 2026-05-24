@@ -1,157 +1,115 @@
-# RHEL10-Logical-Volume-Manager
-Here is a complete, step-by-step guide for adding a new disk to a RHEL 10 system. This guide assumes you are using **LVM** (Logical Volume Manager), which is the standard and recommended storage management method for RHEL.
+### Linux Disk Setup for Linux
 
-> ⚠️ **Critical Warning:** Double-check device names before running any destructive commands (`wipefs`, `pvcreate`). Selecting the wrong disk will result in permanent data loss. Use `lsblk` frequently to verify.
+#### Phase 1: Identify and Verify the New Disk
 
-### Phase 1: Identify and Clean the Disk
-
-1.  **Identify the new disk**
-    ```bash
-    lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINT,MODEL
-    ```
-    *Look for a disk with no partitions, no FSTYPE, and no MOUNTPOINT. Note the device name (e.g., `/dev/sdb`, `/dev/nvme1n1`).*
-    ```
-    NAME               SIZE TYPE FSTYPE      MOUNTPOINT MODEL
-    nvme0n1             20G disk                        VMware Virtual NVMe Disk
-    ├─nvme0n1p1          1M part
-    ├─nvme0n1p2          1G part xfs         /boot
-    └─nvme0n1p3         19G part LVM2_member
-      ├─almalinux-root  17G lvm  xfs         /
-      └─almalinux-swap   2G lvm  swap
-    nvme0n2              5G disk                        VMware Virtual NVMe Disk
-    ```
-
-3.  **Wipe any existing signatures** (old partition tables, RAID metadata, etc.)
-    ```bash
-    sudo wipefs -a /dev/nvme0n2
-    ```
-    Replace `/dev/nvme0n2` with your actual new disk. The `-a` flag erases all filesystem/RAID/partition table signatures.
-
-### Phase 2: Create LVM Physical Volume & Extend Volume Group
-
-3.  **Initialize the disk as an LVM Physical Volume (PV)**
-    ```bash
-    sudo pvcreate /dev/nvme0n2
-    ```
-
-4.  **Check your existing Volume Group (VG) name**
-    ```bash
-    sudo vgs
-    ```
-    *Note the VG name (commonly `rhel` or `rl10` on RHEL 10).*
-
-5.  **Extend the Volume Group with the new PV**
-    ```bash
-    sudo vgextend <vg_name> /dev/nvme0n2
-    ```
-
-6.  **Verify the VG now has free space**
-    Look at the VFree column — it should reflect your new disk's capacity
-    ```bash
-    sudo vgs
-    ```
-    
-### Mounting a NEW Filesystem (If Not Expanding Existing)
-
-> Skip this phase if you only expanded an existing volume above. Use this if you created a **brand new LV**.
-
-1.  **Create a new Logical Volume**
-    ```bash
-    sudo lvcreate -n <new_lv_name> -l 100%FREE <vg_name>
-    ```
-
-2. **Format with XFS** (RHEL 10 default/recommended)
-    ```bash
-    sudo mkfs.xfs /dev/<vg_name>/<new_lv_name>
-    ```
-
-3. **Create mount point and mount**
-    ```bash
-    sudo mkdir -p /mnt/newdisk
-    sudo mount /dev/<vg_name>/<new_lv_name> /mnt/newdisk
-    ```
-
-4. **Make persistent across reboots** — add to `/etc/fstab`
-    ```bash
-    # Get the UUID
-    sudo blkid /dev/<vg_name>/<new_lv_name>
-
-    # Add entry (use UUID, never raw device path)
-    echo "UUID=<paste-uuid-here>  /mnt/newdisk  xfs  defaults  0 0" | sudo tee -a /etc/fstab
-
-    # Validate fstab syntax (CRITICAL — prevents unbootable system)
-    sudo findmnt --verify --verbose
-    ```
-### Expand Logical Volume & Filesystem(If Not Mounting a NEW Filesystem)
-    The naming convention is always `<VG>-<LV>`. The hyphen separates them:
-
-    | Component | Value | Full Device Path |
-    | :--- | :--- | :--- |
-    | Volume Group | `rhel` | — |
-    | Logical Volume | `root` | `/dev/rehl/root` |
-    | Logical Volume | `swap` | `/dev/rehl/swap` |
-1.  **Extend the Logical Volume (LV) AND resize the filesystem in one command**
-    ```bash
-    sudo lvextend -r -l +100%FREE /dev/<vg_name>/<lv_name>
-    ```
-    -   `-r` (`--resizefs`): Automatically grows the filesystem after extending the LV
-    -   `-l +100%FREE`: Uses **all** available free space in the VG
-    -   For XFS (RHEL default): uses `xfs_growfs` automatically
-    -   For ext4: uses `resize2fs` automatically
-
-2.  **Verify the expansion**
-    ```bash
-    df -hT /mount/point
-    ```
-
-
-
-### Quick Non-LVM Alternative
-
- Only use this if you intentionally do **not** want LVM:
-    
 ```bash
-    # Create GPT partition table + single partition
-    sudo parted /dev/nvme0n2 mklabel gpt
-    sudo parted /dev/nvme0n2 mkpart primary xfs 0% 100%
-
-    # Format and mount
-    sudo mkfs.xfs /dev/nvme0n2
-    sudo mkdir -p /mnt/newdisk
-    sudo mount /dev/nvme0n2 /mnt/newdisk
+lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINT,MODEL
 ```
-Persist via UUID in /etc/fstab
-**Make persistent across reboots** — add to `/etc/fstab`
 
- ```bash
-    # Get the UUID
-    sudo blkid /dev/<vg_name>/<new_lv_name>
+> **Note:** Visually identify your new disk. It will have no FSTYPE, no MOUNTPOINT, and no child partitions. Common names are `/dev/sdb`, `/dev/nvme1n1`, or `/dev/vdb`.
 
-    # Add entry (use UUID, never raw device path)
-    echo "UUID=<paste-uuid-here>  /mnt/newdisk  xfs  defaults  0 0" | sudo tee -a /etc/fstab
+```bash
+# REPLACE <DEVICE> with actual disk name (e.g., /dev/sdb)
+lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINT <DEVICE>
+```
 
-    # Validate fstab syntax (CRITICAL — prevents unbootable system)
-    sudo findmnt --verify --verbose
- ```
+> **Note:** Safety check. This must show a single line with empty FSTYPE and MOUNTPOINT columns. If it shows partitions or a filesystem, you have selected the wrong disk. Stop immediately.
 
-### Verification Checklist
+#### Phase 2: Wipe and Format
 
-| Check | Command | Expected Result |
-| :--- | :--- | :--- |
-| Disk recognized | `lsblk` | New disk visible under VG/LV |
-| PV created | `pvs` | New disk listed as PV |
-| VG extended | `vgs` | VFree = 0 (if fully used) |
-| LV sized correctly | `lvs` | Size reflects new total |
-| Filesystem grown | `df -hT` | Shows expanded size |
-| Survives reboot | `sudo mount -a` | No errors returned |
+```bash
+sudo wipefs -a <DEVICE>
+```
 
-### Important Notes for RHEL 10
+> **Note:** Erases all partition tables, RAID metadata, and filesystem signatures from the entire disk. The `-a` flag is required to remove all signature types. This is irreversible.
 
--   **XFS cannot shrink.** If you allocate all free space and later need to reduce, you must back up, destroy, and recreate. Consider allocating only what you need now (`-L 50G` instead of `+100%FREE`) if future flexibility matters.
--   **NVMe devices** appear as `/dev/nvme0n1` (no partition suffix needed for whole-disk PV).
--   **SELinux context**: If mounting to a non-standard path for a service, you may need to set SELinux labels:
-    ```bash
-    sudo semanage fcontext -a -t httpd_sys_content_t "/mnt/newdisk(/.*)?"
-    sudo restorecon -Rv /mnt/newdisk
-    ```
--   Always run `sudo findmnt --verify` after editing `/etc/fstab`. A malformed fstab entry can make RHEL drop into emergency mode on next boot.
+```bash
+sudo mkfs.xfs <DEVICE>
+```
+
+> **Note:** Creates an XFS filesystem directly on the whole disk without a partition table. Do not append `p1` or any partition suffix. XFS is the default and recommended filesystem for RHEL/AlmaLinux.
+
+#### Phase 3: Prepare Mount Point and Capture UUID
+
+```bash
+# REPLACE <MOUNT_PATH> with desired directory (e.g., /mnt/mydisk)
+sudo mkdir -p <MOUNT_PATH>
+```
+
+> **Note:** Creates the mount directory before modifying fstab. The `-p` flag prevents errors if parent directories don't exist or if the directory already exists. This step must happen before `findmnt --verify` or validation will fail with "target does not exist."
+
+```bash
+UUID=$(sudo blkid -s UUID -o value <DEVICE>)
+echo "Detected UUID: ${UUID}"
+test -n "$UUID" || echo "ERROR: UUID is empty. Stop now."
+```
+
+> **Note:** Extracts only the UUID string from the whole disk device and validates it. Never query a partition like `<DEVICE>p1` when using the whole-disk method — that device does not exist and will return an empty string. If the UUID is blank, do not proceed. An empty `UUID=` in fstab causes emergency mode on next boot.
+
+#### Phase 4: Persist Mount and Validate
+
+```bash
+echo "UUID=${UUID}  <MOUNT_PATH>  xfs  defaults  0 0" | sudo tee -a /etc/fstab
+```
+
+> **Note:** Appends a single fstab entry using the verified UUID. Using `tee -a` ensures the write happens under sudo. Never use raw device paths like `/dev/sdb` here — device names can change across reboots.
+
+```bash
+sudo systemctl daemon-reload
+```
+
+> **Note:** Forces systemd to re-read fstab. Without this, `findmnt --verify` may report stale warnings about modified fstab even though the file is correct.
+
+```bash
+sudo findmnt --verify --verbose
+```
+
+> **Note:** Validates every fstab entry for syntax, source existence, target existence, and filesystem type match. You must see 0 parse errors and 0 errors before proceeding. If any error appears, fix it now — do not run `mount -a`.
+
+#### Phase 5: Mount and Confirm
+
+```bash
+sudo mount -a
+```
+
+> **Note:** Mounts all unmounted fstab entries. Returns silently on success. If it prints an error, the fstab entry is still broken despite passing `findmnt` — investigate before rebooting.
+
+```bash
+df -hT <MOUNT_PATH>
+```
+
+> **Note:** Final confirmation. Should show your new disk's size, XFS as the type, and the correct mount point. After a successful reboot test, this setup is permanent and automatic.
+
+---
+
+### Undo and Clean Section
+
+```bash
+sudo umount <MOUNT_PATH>
+```
+
+> **Note:** Unmounts the filesystem. Must be done before editing fstab or wiping the disk. If it reports "target is busy," run `sudo lsof +D <MOUNT_PATH>` to find processes using the mount and stop them first.
+
+```bash
+sudo sed -i '\|<MOUNT_PATH>|d' /etc/fstab
+```
+
+> **Note:** Deletes the fstab line matching your mount point. Uses `|` as the delimiter instead of `/` to avoid conflicts with path slashes. Always verify with `cat /etc/fstab` afterward to confirm only the intended line was removed.
+
+```bash
+sudo systemctl daemon-reload
+```
+
+> **Note:** Reloads systemd after fstab modification. Prevents stale mount unit warnings and ensures the system won't attempt to mount the removed entry on next boot.
+
+```bash
+sudo wipefs -a <DEVICE>
+```
+
+> **Note:** Removes the XFS filesystem signature from the disk. After this, the disk is completely blank and ready to be reformatted, repartitioned, or reassigned to LVM. This is irreversible.
+
+```bash
+sudo rmdir <MOUNT_PATH>
+```
+
+> **Note:** Removes the now-empty mount directory. Only works if the directory is truly empty. If it fails with "Directory not empty," data was written to the mount before unmounting — that data is gone after `wipefs`, so you can safely force-remove with `sudo rm -rf <MOUNT_PATH>` if you are certain.
