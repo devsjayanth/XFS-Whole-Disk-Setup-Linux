@@ -46,54 +46,32 @@ Here is a complete, step-by-step guide for adding a new disk to a RHEL 10 system
     ```
 
 6.  **Verify the VG now has free space**
+    Look at the VFree column — it should reflect your new disk's capacity
     ```bash
     sudo vgs
-    # Look at the VFree column — it should reflect your new disk's capacity
     ```
-
-### Phase 3: Expand Logical Volume & Filesystem
-The naming convention is always `<VG>-<LV>`. The hyphen separates them:
-
-| Component | Value | Full Device Path |
-| :--- | :--- | :--- |
-| Volume Group | `rhel` | — |
-| Logical Volume | `root` | `/dev/rehl/root` |
-| Logical Volume | `swap` | `/dev/rehl/swap` |
-7.  **Extend the Logical Volume (LV) AND resize the filesystem in one command**
-    ```bash
-    sudo lvextend -r -l +100%FREE /dev/<vg_name>/<lv_name>
-    ```
-    -   `-r` (`--resizefs`): Automatically grows the filesystem after extending the LV
-    -   `-l +100%FREE`: Uses **all** available free space in the VG
-    -   For XFS (RHEL default): uses `xfs_growfs` automatically
-    -   For ext4: uses `resize2fs` automatically
-
-8.  **Verify the expansion**
-    ```bash
-    df -hT /mount/point
-    ```
-
-### Phase 4: Mounting a NEW Filesystem (If Not Expanding Existing)
+    
+### Mounting a NEW Filesystem (If Not Expanding Existing)
 
 > Skip this phase if you only expanded an existing volume above. Use this if you created a **brand new LV**.
 
-9.  **Create a new Logical Volume**
+1.  **Create a new Logical Volume**
     ```bash
     sudo lvcreate -n <new_lv_name> -l 100%FREE <vg_name>
     ```
 
-10. **Format with XFS** (RHEL 10 default/recommended)
+2. **Format with XFS** (RHEL 10 default/recommended)
     ```bash
     sudo mkfs.xfs /dev/<vg_name>/<new_lv_name>
     ```
 
-11. **Create mount point and mount**
+3. **Create mount point and mount**
     ```bash
     sudo mkdir -p /mnt/newdisk
     sudo mount /dev/<vg_name>/<new_lv_name> /mnt/newdisk
     ```
 
-12. **Make persistent across reboots** — add to `/etc/fstab`
+4. **Make persistent across reboots** — add to `/etc/fstab`
     ```bash
     # Get the UUID
     sudo blkid /dev/<vg_name>/<new_lv_name>
@@ -104,23 +82,57 @@ The naming convention is always `<VG>-<LV>`. The hyphen separates them:
     # Validate fstab syntax (CRITICAL — prevents unbootable system)
     sudo findmnt --verify --verbose
     ```
+### Expand Logical Volume & Filesystem(If Not Mounting a NEW Filesystem)
+    The naming convention is always `<VG>-<LV>`. The hyphen separates them:
 
-### Quick Reference: Non-LVM Alternative (Simple Partition)
+    | Component | Value | Full Device Path |
+    | :--- | :--- | :--- |
+    | Volume Group | `rhel` | — |
+    | Logical Volume | `root` | `/dev/rehl/root` |
+    | Logical Volume | `swap` | `/dev/rehl/swap` |
+1.  **Extend the Logical Volume (LV) AND resize the filesystem in one command**
+    ```bash
+    sudo lvextend -r -l +100%FREE /dev/<vg_name>/<lv_name>
+    ```
+    -   `-r` (`--resizefs`): Automatically grows the filesystem after extending the LV
+    -   `-l +100%FREE`: Uses **all** available free space in the VG
+    -   For XFS (RHEL default): uses `xfs_growfs` automatically
+    -   For ext4: uses `resize2fs` automatically
 
-Only use this if you intentionally do **not** want LVM:
+2.  **Verify the expansion**
+    ```bash
+    df -hT /mount/point
+    ```
 
-```bash
-# Create GPT partition table + single partition
-sudo parted /dev/nvme0n2 mklabel gpt
-sudo parted /dev/nvme0n2 mkpart primary xfs 0% 100%
 
-# Format and mount
-sudo mkfs.xfs /dev/nvme0n2
-sudo mkdir -p /mnt/newdisk
-sudo mount /dev/nvme0n2 /mnt/newdisk
 
-# Persist via UUID in /etc/fstab (same as Step 12 above)
-```
+### Simple Partition Non-LVM Alternative
+
+    Only use this if you intentionally do **not** want LVM:
+
+    ```bash
+    # Create GPT partition table + single partition
+    sudo parted /dev/nvme0n2 mklabel gpt
+    sudo parted /dev/nvme0n2 mkpart primary xfs 0% 100%
+
+    # Format and mount
+    sudo mkfs.xfs /dev/nvme0n2
+    sudo mkdir -p /mnt/newdisk
+    sudo mount /dev/nvme0n2 /mnt/newdisk
+    ```
+Persist via UUID in /etc/fstab
+**Make persistent across reboots** — add to `/etc/fstab`
+
+    ```bash
+    # Get the UUID
+    sudo blkid /dev/<vg_name>/<new_lv_name>
+
+    # Add entry (use UUID, never raw device path)
+    echo "UUID=<paste-uuid-here>  /mnt/newdisk  xfs  defaults  0 0" | sudo tee -a /etc/fstab
+
+    # Validate fstab syntax (CRITICAL — prevents unbootable system)
+    sudo findmnt --verify --verbose
+    ```
 
 ### Verification Checklist
 
