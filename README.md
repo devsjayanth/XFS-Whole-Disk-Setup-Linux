@@ -52,7 +52,13 @@ Here is a complete, step-by-step guide for adding a new disk to a RHEL 10 system
     ```
 
 ### Phase 3: Expand Logical Volume & Filesystem
+The naming convention is always `<VG>-<LV>`. The hyphen separates them:
 
+| Component | Value | Full Device Path |
+| :--- | :--- | :--- |
+| Volume Group | `rhel` | — |
+| Logical Volume | `root` | `/dev/rehl/root` |
+| Logical Volume | `swap` | `/dev/rehl/swap` |
 7.  **Extend the Logical Volume (LV) AND resize the filesystem in one command**
     ```bash
     sudo lvextend -r -l +100%FREE /dev/<vg_name>/<lv_name>
