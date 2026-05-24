@@ -23,15 +23,15 @@ Here is a complete, step-by-step guide for adding a new disk to a RHEL 10 system
 
 3.  **Wipe any existing signatures** (old partition tables, RAID metadata, etc.)
     ```bash
-    sudo wipefs -a /dev/sdX
+    sudo wipefs -a /dev/nvme0n2
     ```
-    Replace `/dev/sdX` with your actual new disk. The `-a` flag erases all filesystem/RAID/partition table signatures.
+    Replace `/dev/nvme0n2` with your actual new disk. The `-a` flag erases all filesystem/RAID/partition table signatures.
 
 ### Phase 2: Create LVM Physical Volume & Extend Volume Group
 
 3.  **Initialize the disk as an LVM Physical Volume (PV)**
     ```bash
-    sudo pvcreate /dev/sdX
+    sudo pvcreate /dev/nvme0n2
     ```
 
 4.  **Check your existing Volume Group (VG) name**
@@ -42,7 +42,7 @@ Here is a complete, step-by-step guide for adding a new disk to a RHEL 10 system
 
 5.  **Extend the Volume Group with the new PV**
     ```bash
-    sudo vgextend <vg_name> /dev/sdX
+    sudo vgextend <vg_name> /dev/nvme0n2
     ```
 
 6.  **Verify the VG now has free space**
@@ -105,13 +105,13 @@ Only use this if you intentionally do **not** want LVM:
 
 ```bash
 # Create GPT partition table + single partition
-sudo parted /dev/sdX mklabel gpt
-sudo parted /dev/sdX mkpart primary xfs 0% 100%
+sudo parted /dev/nvme0n2 mklabel gpt
+sudo parted /dev/nvme0n2 mkpart primary xfs 0% 100%
 
 # Format and mount
-sudo mkfs.xfs /dev/sdX1
+sudo mkfs.xfs /dev/nvme0n2
 sudo mkdir -p /mnt/newdisk
-sudo mount /dev/sdX1 /mnt/newdisk
+sudo mount /dev/nvme0n2 /mnt/newdisk
 
 # Persist via UUID in /etc/fstab (same as Step 12 above)
 ```
