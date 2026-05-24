@@ -106,11 +106,11 @@ Here is a complete, step-by-step guide for adding a new disk to a RHEL 10 system
 
 
 
-### Simple Partition Non-LVM Alternative
+### Quick Non-LVM Alternative
 
-    Only use this if you intentionally do **not** want LVM:
-
-    ```bash
+ Only use this if you intentionally do **not** want LVM:
+    
+```bash
     # Create GPT partition table + single partition
     sudo parted /dev/nvme0n2 mklabel gpt
     sudo parted /dev/nvme0n2 mkpart primary xfs 0% 100%
@@ -119,11 +119,11 @@ Here is a complete, step-by-step guide for adding a new disk to a RHEL 10 system
     sudo mkfs.xfs /dev/nvme0n2
     sudo mkdir -p /mnt/newdisk
     sudo mount /dev/nvme0n2 /mnt/newdisk
-    ```
+```
 Persist via UUID in /etc/fstab
 **Make persistent across reboots** — add to `/etc/fstab`
 
-    ```bash
+ ```bash
     # Get the UUID
     sudo blkid /dev/<vg_name>/<new_lv_name>
 
@@ -132,7 +132,7 @@ Persist via UUID in /etc/fstab
 
     # Validate fstab syntax (CRITICAL — prevents unbootable system)
     sudo findmnt --verify --verbose
-    ```
+ ```
 
 ### Verification Checklist
 
