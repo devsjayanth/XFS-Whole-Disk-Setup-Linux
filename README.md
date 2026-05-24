@@ -1,100 +1,67 @@
-# Linux Disk Setup for Linux
+# Linux Whole-Disk XFS Setup
 
-## Phase 1: Identify and Verify the New Disk
+> ⚠️ **Warning:** This formats an entire disk without a partition table. XFS cannot be shrunk. Never run this on your OS/boot disk.
 
+### 1. Identify & Safety Check
 ```bash
-lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINT,MODEL
+# Find your disk. Cross-reference SIZE and SERIAL to be certain.
+lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINT,SERIAL
+
+# REPLACE <DEVICE> (e.g., /dev/sdb). Must return exactly "1".
+# If it returns anything else, STOP — you selected the wrong device.
+lsblk -no TYPE <DEVICE> | grep -c '^disk$'
 ```
 
-> **Note:** Visually identify your new disk. It will have no FSTYPE, no MOUNTPOINT, and no child partitions. Common names are `/dev/sdb`, `/dev/nvme1n1`, or `/dev/vdb`.
-
-```bash
-# REPLACE <DEVICE> with actual disk name (e.g., /dev/sdb)
-lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINT <DEVICE>
-```
-
-> **Note:** Safety check. This must show a single line with empty FSTYPE and MOUNTPOINT columns. If it shows partitions or a filesystem, you have selected the wrong disk. Stop immediately.
-
-## Phase 2: Wipe and Format
-
+### 2. Wipe & Format with Unique UUID
 ```bash
 sudo wipefs -a <DEVICE>
+
+# -f forces overwrite; explicit uuidgen prevents duplicate-UUID mount failures
+sudo mkfs.xfs -f -m uuid=$(uuidgen) <DEVICE>
 ```
 
-> **Note:** Erases all partition tables, RAID metadata, and filesystem signatures from the entire disk. The `-a` flag is required to remove all signature types. This is irreversible.
-
+### 3. Create Mount Point & Validate UUID
 ```bash
-sudo mkfs.xfs <DEVICE>
-```
+sudo mkdir -p /mnt/mydisk
 
-> **Note:** Creates an XFS filesystem directly on the whole disk without a partition table. Do not append `p1` or any partition suffix. XFS is the default and recommended filesystem for RHEL/AlmaLinux.
-
-## Phase 3: Prepare Mount Point and Capture UUID
-
-```bash
-# REPLACE <MOUNT_PATH> with desired directory (e.g., /mnt/mydisk)
-sudo mkdir -p <MOUNT_PATH>
-```
-
-> **Note:** Creates the mount directory before modifying fstab. The `-p` flag prevents errors if parent directories don't exist or if the directory already exists. This step must happen before `findmnt --verify` or validation will fail with "target does not exist."
-
-```bash
 UUID=$(sudo blkid -s UUID -o value <DEVICE>)
-echo "Detected UUID: ${UUID}"
-test -n "$UUID" || echo "ERROR: UUID is empty. Stop now."
+# Halt if UUID is missing or malformed — empty UUID = emergency mode on boot
+[[ "$UUID" =~ ^[0-9a-f-]{36}$ ]] || { echo "ERROR: Invalid UUID"; exit 1; }
+echo "UUID: $UUID"
 ```
 
-> **Note:** Extracts only the UUID string from the whole disk device and validates it. Never query a partition like `<DEVICE>p1` when using the whole-disk method — that device does not exist and will return an empty string. If the UUID is blank, do not proceed. An empty `UUID=` in fstab causes emergency mode on next boot.
-
-## Phase 4: Persist Mount and Validate
-
+### 4. Update fstab Safely & Verify
 ```bash
-echo "UUID=${UUID}  <MOUNT_PATH>  xfs  defaults  0 0" | sudo tee -a /etc/fstab
+# Backup fstab FIRST
+sudo cp /etc/fstab /etc/fstab.bak.$(date +%s)
+
+# Append entry with noatime (reduces write amplification on data disks)
+echo "UUID=$UUID  /mnt/mydisk  xfs  defaults,noatime  0 0" | sudo tee -a /etc/fstab
+
 sudo systemctl daemon-reload
-```
 
-> **Note:** Forces systemd to re-read fstab. Without this, `findmnt --verify` may report stale warnings about modified fstab even though the file is correct.
-
-```bash
+# MUST show 0 errors before proceeding
 sudo findmnt --verify --verbose
 ```
 
-> **Note:** Validates every fstab entry for syntax, source existence, target existence, and filesystem type match. You must see 0 parse errors and 0 errors before proceeding. If any error appears, fix it now — do not run `mount -a`.
-
-## Phase 5: Mount and Confirm
-
+### 5. Mount & Confirm Writability
 ```bash
 sudo mount -a
+
+# Verify type, options
+findmnt -n -o FSTYPE,OPTIONS /mnt/mydisk
 ```
-
-> **Note:** Mounts all unmounted fstab entries. Returns silently on success. If it prints an error, the fstab entry is still broken despite passing `findmnt` — investigate before rebooting.
-
-```bash
-df -hT <MOUNT_PATH>
-```
-
-> **Note:** Final confirmation. Should show your new disk's size, XFS as the type, and the correct mount point. After a successful reboot test, this setup is permanent and automatic.
 
 ---
 
-## Undo and Clean Section
-
+### Undo / Remove Disk
 ```bash
-sudo umount <MOUNT_PATH>
-```
+sudo umount /mnt/mydisk
 
-> **Note:** Unmounts the filesystem. Must be done before editing fstab or wiping the disk. If it reports "target is busy," run `sudo lsof +D <MOUNT_PATH>` to find processes using the mount and stop them first.
-
-```bash
-sudo sed -i '\|<MOUNT_PATH>|d' /etc/fstab
+# Match on UUID, NOT mount path — prevents accidentally deleting other fstab entries
+sudo sed -i "\|^UUID=$UUID|d" /etc/fstab
 sudo systemctl daemon-reload
-```
 
-> **Note:** Reloads systemd after fstab modification. Prevents stale mount unit warnings and ensures the system won't attempt to mount the removed entry on next boot.
-
-```bash
 sudo wipefs -a <DEVICE>
-sudo rmdir <MOUNT_PATH>
+sudo rmdir /mnt/mydisk   # Fails safely if not empty — inspect before force-deleting
 ```
-
-> **Note:** Removes the now-empty mount directory. Only works if the directory is truly empty. If it fails with "Directory not empty," data was written to the mount before unmounting — that data is gone after `wipefs`, so you can safely force-remove with `sudo rm -rf <MOUNT_PATH>` if you are certain.
