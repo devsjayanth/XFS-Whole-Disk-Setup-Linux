@@ -10,8 +10,18 @@ Here is a complete, step-by-step guide for adding a new disk to a RHEL 10 system
     lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINT,MODEL
     ```
     *Look for a disk with no partitions, no FSTYPE, and no MOUNTPOINT. Note the device name (e.g., `/dev/sdb`, `/dev/nvme1n1`).*
+```Example
+NAME               SIZE TYPE FSTYPE      MOUNTPOINT MODEL
+nvme0n1             20G disk                        VMware Virtual NVMe Disk
+├─nvme0n1p1          1M part
+├─nvme0n1p2          1G part xfs         /boot
+└─nvme0n1p3         19G part LVM2_member
+  ├─almalinux-root  17G lvm  xfs         /
+  └─almalinux-swap   2G lvm  swap
+nvme0n2              5G disk                        VMware Virtual NVMe Disk
+```
 
-2.  **Wipe any existing signatures** (old partition tables, RAID metadata, etc.)
+3.  **Wipe any existing signatures** (old partition tables, RAID metadata, etc.)
     ```bash
     sudo wipefs -a /dev/sdX
     ```
