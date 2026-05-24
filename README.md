@@ -48,8 +48,9 @@ sudo findmnt --verify --verbose
 ```bash
 sudo mount -a
 
-# Verify type, options
+# Verify type, options, AND that the disk is actually writable
 findmnt -n -o FSTYPE,OPTIONS /mnt/mydisk
+sudo touch /mnt/mydisk/.write_test && sudo rm /mnt/mydisk/.write_test && echo "Ready"
 ```
 
 ---
