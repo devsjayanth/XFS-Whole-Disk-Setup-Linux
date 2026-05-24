@@ -1,6 +1,6 @@
-### Linux Disk Setup for Linux
+# Linux Disk Setup for Linux
 
-#### Phase 1: Identify and Verify the New Disk
+## Phase 1: Identify and Verify the New Disk
 
 ```bash
 lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINT,MODEL
@@ -15,7 +15,7 @@ lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINT <DEVICE>
 
 > **Note:** Safety check. This must show a single line with empty FSTYPE and MOUNTPOINT columns. If it shows partitions or a filesystem, you have selected the wrong disk. Stop immediately.
 
-#### Phase 2: Wipe and Format
+## Phase 2: Wipe and Format
 
 ```bash
 sudo wipefs -a <DEVICE>
@@ -29,7 +29,7 @@ sudo mkfs.xfs <DEVICE>
 
 > **Note:** Creates an XFS filesystem directly on the whole disk without a partition table. Do not append `p1` or any partition suffix. XFS is the default and recommended filesystem for RHEL/AlmaLinux.
 
-#### Phase 3: Prepare Mount Point and Capture UUID
+## Phase 3: Prepare Mount Point and Capture UUID
 
 ```bash
 # REPLACE <MOUNT_PATH> with desired directory (e.g., /mnt/mydisk)
@@ -46,15 +46,10 @@ test -n "$UUID" || echo "ERROR: UUID is empty. Stop now."
 
 > **Note:** Extracts only the UUID string from the whole disk device and validates it. Never query a partition like `<DEVICE>p1` when using the whole-disk method — that device does not exist and will return an empty string. If the UUID is blank, do not proceed. An empty `UUID=` in fstab causes emergency mode on next boot.
 
-#### Phase 4: Persist Mount and Validate
+## Phase 4: Persist Mount and Validate
 
 ```bash
 echo "UUID=${UUID}  <MOUNT_PATH>  xfs  defaults  0 0" | sudo tee -a /etc/fstab
-```
-
-> **Note:** Appends a single fstab entry using the verified UUID. Using `tee -a` ensures the write happens under sudo. Never use raw device paths like `/dev/sdb` here — device names can change across reboots.
-
-```bash
 sudo systemctl daemon-reload
 ```
 
@@ -66,7 +61,7 @@ sudo findmnt --verify --verbose
 
 > **Note:** Validates every fstab entry for syntax, source existence, target existence, and filesystem type match. You must see 0 parse errors and 0 errors before proceeding. If any error appears, fix it now — do not run `mount -a`.
 
-#### Phase 5: Mount and Confirm
+## Phase 5: Mount and Confirm
 
 ```bash
 sudo mount -a
@@ -82,7 +77,7 @@ df -hT <MOUNT_PATH>
 
 ---
 
-### Undo and Clean Section
+## Undo and Clean Section
 
 ```bash
 sudo umount <MOUNT_PATH>
@@ -92,11 +87,6 @@ sudo umount <MOUNT_PATH>
 
 ```bash
 sudo sed -i '\|<MOUNT_PATH>|d' /etc/fstab
-```
-
-> **Note:** Deletes the fstab line matching your mount point. Uses `|` as the delimiter instead of `/` to avoid conflicts with path slashes. Always verify with `cat /etc/fstab` afterward to confirm only the intended line was removed.
-
-```bash
 sudo systemctl daemon-reload
 ```
 
@@ -104,11 +94,6 @@ sudo systemctl daemon-reload
 
 ```bash
 sudo wipefs -a <DEVICE>
-```
-
-> **Note:** Removes the XFS filesystem signature from the disk. After this, the disk is completely blank and ready to be reformatted, repartitioned, or reassigned to LVM. This is irreversible.
-
-```bash
 sudo rmdir <MOUNT_PATH>
 ```
 
